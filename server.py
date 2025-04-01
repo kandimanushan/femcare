@@ -133,44 +133,29 @@ async def chat_with_llm(request: Dict):
                 )
             
             try:
-                headers = {
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "HTTP-Referer": "http://localhost:3000",
-                    "Content-Type": "application/json"
-                }
-                
                 # Log the request (but not the API key)
-                print(f"Making OpenRouter request with {len(messages)} messages")
+                logger.debug(f"Making OpenRouter request with {len(messages)} messages")
                 
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        "https://openrouter.ai/api/v1/chat/completions",
-                        json={
-                            "model": "deepseek/deepseek-v3-base:free",
-                            "messages": messages
-                        },
-                        headers=headers
-                    )
-                    
-                    if response.status_code != 200:
-                        error_content = response.json()
-                        return JSONResponse(
-                            status_code=500,
-                            content={"error": f"OpenRouter API error: {error_content}"}
-                        )
-                        
-                    # If we get here, the request was successful
-                    return StreamingResponse(
-                        stream_openrouter_response(response),
-                        media_type="text/event-stream"
-                    )
+                # Return streaming response directly
+                return StreamingResponse(
+                    stream_openrouter_response(messages),
+                    media_type="text/event-stream"
+                )
                     
             except Exception as e:
+                logger.error(f"Error in OpenRouter chat: {str(e)}", exc_info=True)
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error calling OpenRouter: {str(e)}"}
                 )
+        else:
+            # Handle Ollama case
+            return StreamingResponse(
+                stream_ollama_response(messages),
+                media_type="text/event-stream"
+            )
     except Exception as e:
+        logger.error(f"Server error: {str(e)}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={"error": f"Server error: {str(e)}"}

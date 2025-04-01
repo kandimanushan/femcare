@@ -152,9 +152,11 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
     e.preventDefault();
     if (!userInput.trim()) return;
 
-    const userMessage = {
+    const userMessage: Message = {
+        id: Date.now().toString(),
         role: 'user',
-        content: userInput.trim()
+        content: userInput.trim(),
+        timestamp: new Date()
     };
 
     try {
@@ -162,17 +164,17 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
         setIsLoading(true);
         setError(null);
 
+        // Add user message to chat
+        setMessages(prev => [...prev, userMessage]);
+
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                messages: [{
-                    role: 'user',
-                    content: userInput.trim()
-                }],
-                model_type: 'openrouter',
+                messages: [...messages, userMessage],
+                model_type: selectedModel,
                 temperature: 0.7,
                 max_tokens: 2000
             }),
@@ -188,11 +190,42 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
         const reader = response.body?.getReader();
         if (!reader) throw new Error('No response body');
 
+        let assistantMessage = {
+            id: Date.now().toString(),
+            role: 'assistant' as const,
+            content: '',
+            timestamp: new Date()
+        };
+
         // Process the stream
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            // Process the chunk...
+
+            // Convert the chunk to text
+            const chunk = new TextDecoder().decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') {
+                        // Update messages with the complete assistant message
+                        setMessages(prev => [...prev, assistantMessage]);
+                        break;
+                    }
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (parsed.text) {
+                            assistantMessage.content += parsed.text;
+                            // Update the message in real-time
+                            setMessages(prev => [...prev.slice(0, -1), { ...assistantMessage }]);
+                        }
+                    } catch (e) {
+                        console.error('Error parsing chunk:', e);
+                    }
+                }
+            }
         }
 
     } catch (error) {
