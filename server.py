@@ -122,39 +122,34 @@ async def stream_openrouter_response(messages, system_prompt=None, temperature=0
 # Modified chat endpoint to support both models
 @app.post("/api/chat")
 async def chat_with_llm(request: Dict):
-    logger.debug(f"Received request with model_type: {request.get('model_type')}")
     try:
         messages = request.get("messages", [])
         model_type = request.get("model_type", "ollama")
-        system_prompt = request.get("systemPrompt")
         
-        # Log API keys (partial for security)
-        logger.debug(f"OpenRouter API Key present: {'OPENROUTER_API_KEY' in os.environ}")
-        if OPENROUTER_API_KEY:
-            masked_key = OPENROUTER_API_KEY[:6] + "..." + OPENROUTER_API_KEY[-4:]
-            logger.debug(f"Using API key: {masked_key}")
-        
-        # Add model-specific debugging
         if model_type == "openrouter":
-            logger.debug("Using OpenRouter/Deepseek model")
-            stream = stream_openrouter_response(
-                messages,
-                system_prompt=system_prompt,
-                temperature=request.get("temperature", 0.7),
-                max_tokens=request.get("max_tokens", 2000)
+            if not OPENROUTER_API_KEY:
+                raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
+                
+            headers = {
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "HTTP-Referer": "https://femcare-three.vercel.app",
+                "Content-Type": "application/json"
+            }
+            
+            # Add logging to debug the request
+            print(f"OpenRouter request: {messages}")
+            
+            return StreamingResponse(
+                stream_openrouter_response(
+                    messages,
+                    system_prompt=request.get("systemPrompt"),
+                    temperature=request.get("temperature", 0.7),
+                    max_tokens=request.get("max_tokens", 2000)
+                ),
+                media_type="text/event-stream"
             )
-        else:
-            logger.debug("Using Ollama/TinyLlama model")
-            stream = stream_ollama_response(
-                messages,
-                system_prompt=system_prompt,
-                temperature=request.get("temperature", 0.7),
-                max_tokens=request.get("max_tokens", 2000)
-            )
-        
-        return StreamingResponse(stream, media_type="text/event-stream")
     except Exception as e:
-        logger.error(f"Error in chat endpoint: {str(e)}", exc_info=True)
+        print(f"Error in chat endpoint: {str(e)}")  # Add logging
         raise HTTPException(status_code=500, detail=str(e))
 
 # Health check endpoint

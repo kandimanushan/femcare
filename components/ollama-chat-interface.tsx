@@ -152,46 +152,32 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
     e.preventDefault();
     if (!userInput.trim()) return;
 
-    // Create the user message object BEFORE using it
     const userMessage = {
-      id: Date.now().toString(),
-      role: 'user' as const,
-      content: userInput,
-      timestamp: new Date()
+        role: 'user',
+        content: userInput.trim()
     };
 
     try {
-      // Add message to state immediately
-      setMessages(prev => [...prev, userMessage]);
-      
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [...messages, userMessage].map(m => ({
-            role: m.role,
-            content: m.content
-          })),
-          model_type: selectedModel
-        }),
-      });
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                messages: [userMessage],
+                model_type: 'openrouter'
+            }),
+        });
 
-      // Clear input after sending
-      setUserInput('');
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Failed to get response');
+        }
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      // Handle streaming response...
-      
+        // Handle successful response...
     } catch (error) {
-      console.error('Chat error:', error);
-      setError(error instanceof Error ? error.message : 'An unknown error occurred');
-    } finally {
-      setIsLoading(false);
+        console.error('Chat error:', error);
+        // Show error to user
     }
   };
 
