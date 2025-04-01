@@ -126,31 +126,43 @@ async def chat_with_llm(request: Dict):
         messages = request.get("messages", [])
         model_type = request.get("model_type", "ollama")
         
+        # Log the incoming request
+        print(f"Received request: model_type={model_type}")
+        
         if model_type == "openrouter":
             if not OPENROUTER_API_KEY:
-                raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
-                
-            headers = {
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "HTTP-Referer": "http://localhost:3000",  # Change back to localhost
-                "Content-Type": "application/json"
-            }
+                raise HTTPException(
+                    status_code=500, 
+                    detail="OpenRouter API key not configured"
+                )
             
-            # Add logging to debug the request
-            print(f"OpenRouter request: {messages}")
+            # Log the API key presence (don't log the actual key)
+            print(f"OpenRouter API key present: {bool(OPENROUTER_API_KEY)}")
             
-            return StreamingResponse(
-                stream_openrouter_response(
-                    messages,
-                    system_prompt=request.get("systemPrompt"),
-                    temperature=request.get("temperature", 0.7),
-                    max_tokens=request.get("max_tokens", 2000)
-                ),
-                media_type="text/event-stream"
-            )
+            try:
+                return StreamingResponse(
+                    stream_openrouter_response(
+                        messages,
+                        system_prompt=request.get("systemPrompt"),
+                        temperature=request.get("temperature", 0.7),
+                        max_tokens=request.get("max_tokens", 2000)
+                    ),
+                    media_type="text/event-stream"
+                )
+            except Exception as e:
+                # Log specific OpenRouter errors
+                print(f"OpenRouter API error: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"OpenRouter API error: {str(e)}"
+                )
     except Exception as e:
-        print(f"Error in chat endpoint: {str(e)}")  # Add logging
-        raise HTTPException(status_code=500, detail=str(e))
+        # Log any other errors
+        print(f"General error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
 # Health check endpoint
 @app.get("/health")

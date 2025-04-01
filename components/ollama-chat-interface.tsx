@@ -152,11 +152,6 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
     e.preventDefault();
     if (!userInput.trim()) return;
 
-    const userMessage = {
-        role: 'user',
-        content: userInput.trim()
-    };
-
     try {
         const response = await fetch('/api/chat', {
             method: 'POST',
@@ -164,14 +159,18 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                messages: [userMessage],
+                messages: [{
+                    role: 'user',
+                    content: userInput.trim()
+                }],
                 model_type: 'openrouter'
             }),
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || 'Failed to get response');
+            const errorData = await response.text();
+            console.error('Server error:', errorData);
+            throw new Error(errorData || 'Failed to get response');
         }
 
         // Handle successful response...
