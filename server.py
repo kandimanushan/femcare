@@ -31,7 +31,7 @@ OLLAMA_MODEL = "llama3.2"
 # OpenRouter API configuration
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = "deepseek/deepseek-v3-base:free"
-OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+OPENROUTER_API_KEY = "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"
 
 if not OPENROUTER_API_KEY:
     raise ValueError("OPENROUTER_API_KEY environment variable is not set")
@@ -78,13 +78,9 @@ async def stream_openrouter_response(messages, system_prompt=None, temperature=0
     try:
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "HTTP-Referer": "http://localhost:3000",  # Change back to localhost
+            "HTTP-Referer": "http://localhost:3000",
             "Content-Type": "application/json"
         }
-        logger.debug("Making OpenRouter API request")
-        
-        if system_prompt:
-            messages.insert(0, {"role": "system", "content": system_prompt})
         
         payload = {
             "model": OPENROUTER_MODEL,
@@ -94,11 +90,14 @@ async def stream_openrouter_response(messages, system_prompt=None, temperature=0
             "max_tokens": max_tokens
         }
         
+        logger.debug(f"Making OpenRouter request with model: {OPENROUTER_MODEL}")
+        
         async with httpx.AsyncClient() as client:
             async with client.stream("POST", OPENROUTER_API_URL, json=payload, headers=headers, timeout=60.0) as response:
                 if response.status_code != 200:
                     error_detail = await response.aread()
-                    raise HTTPException(status_code=response.status_code, detail=f"OpenRouter API error: {error_detail}")
+                    logger.error(f"OpenRouter API error: {error_detail}")
+                    raise HTTPException(status_code=response.status_code, detail=f"OpenRouter API error: {error_detail.decode()}")
                 
                 async for line in response.aiter_lines():
                     if line.strip():
