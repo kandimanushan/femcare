@@ -146,113 +146,45 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
     }
   }, [messages])
 
+  const [error, setError] = useState<string | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isLoading) return
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user" as const,
-      content: input,
-      timestamp: new Date(),
-    }
-
-    setMessages((prev) => [...prev, userMessage])
-    setInput("")
-    setIsLoading(true)
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
 
     try {
-      // Prepare messages for API
-      const apiMessages = messages.concat(userMessage).map(({ role, content }) => ({ role, content }))
-
-      // System prompt for healthcare guidance
-      const systemPrompt = `You are a helpful women's health assistant.
-Please follow these guidelines:
-- Provide accurate, evidence-based information about women's health
-- Be empathetic and understanding
-- Always recommend consulting with a healthcare professional for specific medical concerns
-- Focus on women's health and wellness topics
-- Maintain a professional and supportive tone`
-
-      // Call the Ollama API through our FastAPI backend
-      const response = await chatWithLLM(apiMessages, systemPrompt)
-
-      if (!response.body) {
-        throw new Error("No response body")
-      }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let assistantMessage = ""
-
-      while (true) {
-        const { done, value } = await reader.read()
-
-        if (done) {
-          break
-        }
-
-        const chunk = decoder.decode(value)
-        const lines = chunk.split("\n\n")
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(5).trim()
-
-            if (data === "[DONE]") {
-              continue
-            }
-
-            try {
-              const parsed = JSON.parse(data)
-              if (parsed.text) {
-                assistantMessage += parsed.text
-
-                // Update the message in real-time
-                setMessages((prev) => {
-                  const lastMessage = prev[prev.length - 1]
-                  if (lastMessage.role === "assistant" && lastMessage.id === "streaming") {
-                    return [...prev.slice(0, -1), { ...lastMessage, content: assistantMessage }]
-                  } else {
-                    return [...prev, { 
-                      id: "streaming", 
-                      role: "assistant" as const, 
-                      content: assistantMessage,
-                      timestamp: new Date()
-                    }]
-                  }
-                })
-              }
-            } catch (e) {
-              console.error("Error parsing SSE data:", e)
-            }
-          }
-        }
-      }
-
-      // Finalize the assistant message with a proper ID
-      setMessages((prev) => {
-        const lastMessage = prev[prev.length - 1]
-        if (lastMessage.role === "assistant" && lastMessage.id === "streaming") {
-          return [...prev.slice(0, -1), { ...lastMessage, id: Date.now().toString() }]
-        }
-        return prev
-      })
-    } catch (error) {
-      console.error("Error in chat:", error)
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          role: "assistant" as const,
-          content: "I'm sorry, I encountered an error. Please try again later.",
-          timestamp: new Date(),
+      console.log(`Sending request with model: ${selectedModel}`);
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      ])
+        body: JSON.stringify({
+          messages: [...messages, userMessage].map(m => ({
+            role: m.role,
+            content: m.content
+          })),
+          model_type: selectedModel,
+          systemPrompt: systemPrompt,
+          temperature: temperature,
+          max_tokens: maxTokens
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`API error: ${errorData.detail || response.statusText}`);
+      }
+
+      // Handle streaming response...
+    } catch (error) {
+      console.error('Chat error:', error);
+      setError(error instanceof Error ? error.message : 'An unknown error occurred');
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleClearChat = () => {
     // Keep only the welcome message
@@ -295,6 +227,21 @@ Please follow these guidelines:
 
   return (
     <div className="flex flex-col h-full">
+      {/* Add error display */}
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
+          <strong className="font-bold">Error:</strong>
+          <span className="block sm:inline"> {error}</span>
+        </div>
+      )}
+
+      {/* Add loading indicator */}
+      {isLoading && (
+        <div className="fixed top-0 right-0 m-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        </div>
+      )}
+
       {connectionStatus === 'disconnected' && (
         <Alert variant="destructive" className="mb-4">
           <AlertCircle className="h-4 w-4" />

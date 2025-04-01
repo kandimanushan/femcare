@@ -8,6 +8,7 @@ from datetime import datetime
 from sse_starlette.sse import EventSourceResponse
 import os
 from dotenv import load_dotenv
+import logging
 
 # Load environment variables
 load_dotenv()
@@ -34,6 +35,10 @@ OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 
 if not OPENROUTER_API_KEY:
     raise ValueError("OPENROUTER_API_KEY environment variable is not set")
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # Chat with Ollama LLM
 async def stream_ollama_response(messages, system_prompt=None, temperature=0.7, max_tokens=2000):
@@ -70,75 +75,87 @@ async def stream_ollama_response(messages, system_prompt=None, temperature=0.7, 
 
 # New function for OpenRouter streaming
 async def stream_openrouter_response(messages, system_prompt=None, temperature=0.7, max_tokens=2000):
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "HTTP-Referer": "http://localhost:3000",  # Replace with your actual domain
-        "Content-Type": "application/json"
-    }
-    
-    if system_prompt:
-        messages.insert(0, {"role": "system", "content": system_prompt})
-    
-    payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": messages,
-        "stream": True,
-        "temperature": temperature,
-        "max_tokens": max_tokens
-    }
-    
-    async with httpx.AsyncClient() as client:
-        async with client.stream("POST", OPENROUTER_API_URL, json=payload, headers=headers, timeout=60.0) as response:
-            if response.status_code != 200:
-                error_detail = await response.aread()
-                raise HTTPException(status_code=response.status_code, detail=f"OpenRouter API error: {error_detail}")
-            
-            async for line in response.aiter_lines():
-                if line.strip():
-                    if line.startswith("data: "):
-                        line = line[6:]  # Remove "data: " prefix
-                    if line == "[DONE]":
-                        yield f"data: [DONE]\n\n"
-                        break
-                    try:
-                        data = json.loads(line)
-                        if "choices" in data and len(data["choices"]) > 0:
-                            content = data["choices"][0].get("delta", {}).get("content", "")
-                            if content:
-                                yield f"data: {json.dumps({'text': content})}\n\n"
-                    except json.JSONDecodeError:
-                        continue
+    try:
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "HTTP-Referer": "http://localhost:3000",  # Update with your domain
+            "Content-Type": "application/json"
+        }
+        logger.debug("Making OpenRouter API request")
+        
+        if system_prompt:
+            messages.insert(0, {"role": "system", "content": system_prompt})
+        
+        payload = {
+            "model": OPENROUTER_MODEL,
+            "messages": messages,
+            "stream": True,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+        
+        async with httpx.AsyncClient() as client:
+            async with client.stream("POST", OPENROUTER_API_URL, json=payload, headers=headers, timeout=60.0) as response:
+                if response.status_code != 200:
+                    error_detail = await response.aread()
+                    raise HTTPException(status_code=response.status_code, detail=f"OpenRouter API error: {error_detail}")
+                
+                async for line in response.aiter_lines():
+                    if line.strip():
+                        if line.startswith("data: "):
+                            line = line[6:]  # Remove "data: " prefix
+                        if line == "[DONE]":
+                            yield f"data: [DONE]\n\n"
+                            break
+                        try:
+                            data = json.loads(line)
+                            if "choices" in data and len(data["choices"]) > 0:
+                                content = data["choices"][0].get("delta", {}).get("content", "")
+                                if content:
+                                    yield f"data: {json.dumps({'text': content})}\n\n"
+                        except json.JSONDecodeError:
+                            continue
+    except Exception as e:
+        logger.error(f"Error in OpenRouter streaming: {str(e)}", exc_info=True)
+        raise
 
 # Modified chat endpoint to support both models
 @app.post("/api/chat")
 async def chat_with_llm(request: Dict):
-    messages = request.get("messages", [])
-    model_type = request.get("model_type", "ollama")  # Default to ollama
-    system_prompt = request.get("systemPrompt")
-    temperature = request.get("temperature", 0.7)
-    max_tokens = request.get("max_tokens", 2000)
-    
-    if model_type == "ollama":
-        stream = stream_ollama_response(
-            messages,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-    elif model_type == "openrouter":
-        stream = stream_openrouter_response(
-            messages,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-    else:
-        raise HTTPException(status_code=400, detail="Invalid model type")
-    
-    return StreamingResponse(
-        stream,
-        media_type="text/event-stream"
-    )
+    logger.debug(f"Received request with model_type: {request.get('model_type')}")
+    try:
+        messages = request.get("messages", [])
+        model_type = request.get("model_type", "ollama")
+        system_prompt = request.get("systemPrompt")
+        
+        # Log API keys (partial for security)
+        logger.debug(f"OpenRouter API Key present: {'OPENROUTER_API_KEY' in os.environ}")
+        if OPENROUTER_API_KEY:
+            masked_key = OPENROUTER_API_KEY[:6] + "..." + OPENROUTER_API_KEY[-4:]
+            logger.debug(f"Using API key: {masked_key}")
+        
+        # Add model-specific debugging
+        if model_type == "openrouter":
+            logger.debug("Using OpenRouter/Deepseek model")
+            stream = stream_openrouter_response(
+                messages,
+                system_prompt=system_prompt,
+                temperature=request.get("temperature", 0.7),
+                max_tokens=request.get("max_tokens", 2000)
+            )
+        else:
+            logger.debug("Using Ollama/TinyLlama model")
+            stream = stream_ollama_response(
+                messages,
+                system_prompt=system_prompt,
+                temperature=request.get("temperature", 0.7),
+                max_tokens=request.get("max_tokens", 2000)
+            )
+        
+        return StreamingResponse(stream, media_type="text/event-stream")
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Health check endpoint
 @app.get("/health")
