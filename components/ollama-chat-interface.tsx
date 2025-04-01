@@ -183,7 +183,16 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
         if (!response.ok) {
             const errorData = await response.text();
             console.error('Server response:', errorData);
-            throw new Error(errorData || 'Failed to get response from AI');
+            let errorMessage = 'Failed to get response from AI';
+            try {
+                const parsedError = JSON.parse(errorData);
+                if (parsedError.error) {
+                    errorMessage = parsedError.error;
+                }
+            } catch (e) {
+                console.error('Error parsing error response:', e);
+            }
+            throw new Error(errorMessage);
         }
 
         // Handle streaming response
@@ -223,6 +232,7 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
                         }
                     } catch (e) {
                         console.error('Error parsing chunk:', e);
+                        throw new Error('Error processing AI response');
                     }
                 }
             }
@@ -231,6 +241,8 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
     } catch (error) {
         console.error('Chat error:', error);
         setError(error instanceof Error ? error.message : 'An unknown error occurred');
+        // Remove the user message if there was an error
+        setMessages(prev => prev.slice(0, -1));
     } finally {
         setIsLoading(false);
     }

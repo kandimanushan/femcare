@@ -125,8 +125,11 @@ async def chat_with_llm(request: Dict):
         messages = request.get("messages", [])
         model_type = request.get("model_type", "ollama")
         
+        logger.debug(f"Received chat request - Model: {model_type}, Messages: {len(messages)}")
+        
         if model_type == "openrouter":
             if not OPENROUTER_API_KEY:
+                logger.error("OpenRouter API key not configured")
                 return JSONResponse(
                     status_code=500,
                     content={"error": "OpenRouter API key not configured in environment"}
@@ -144,21 +147,34 @@ async def chat_with_llm(request: Dict):
                     
             except Exception as e:
                 logger.error(f"Error in OpenRouter chat: {str(e)}", exc_info=True)
+                error_message = f"Error calling OpenRouter: {str(e)}"
+                logger.error(error_message)
                 return JSONResponse(
                     status_code=500,
-                    content={"error": f"Error calling OpenRouter: {str(e)}"}
+                    content={"error": error_message}
                 )
         else:
             # Handle Ollama case
-            return StreamingResponse(
-                stream_ollama_response(messages),
-                media_type="text/event-stream"
-            )
+            try:
+                return StreamingResponse(
+                    stream_ollama_response(messages),
+                    media_type="text/event-stream"
+                )
+            except Exception as e:
+                logger.error(f"Error in Ollama chat: {str(e)}", exc_info=True)
+                error_message = f"Error calling Ollama: {str(e)}"
+                logger.error(error_message)
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": error_message}
+                )
     except Exception as e:
         logger.error(f"Server error: {str(e)}", exc_info=True)
+        error_message = f"Server error: {str(e)}"
+        logger.error(error_message)
         return JSONResponse(
             status_code=500,
-            content={"error": f"Server error: {str(e)}"}
+            content={"error": error_message}
         )
 
 # Health check endpoint
