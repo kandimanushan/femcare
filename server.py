@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from typing import List, Optional, Dict
 import httpx
 import json
@@ -128,9 +128,9 @@ async def chat_with_llm(request: Dict):
         
         if model_type == "openrouter":
             if not OPENROUTER_API_KEY:
-                raise HTTPException(
-                    status_code=500, 
-                    detail="OpenRouter API key not configured"
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": "OpenRouter API key not configured in environment"}
                 )
             
             try:
@@ -140,44 +140,41 @@ async def chat_with_llm(request: Dict):
                     "Content-Type": "application/json"
                 }
                 
-                payload = {
-                    "model": "deepseek-ai/deepseek-coder-33b-instruct",
-                    "messages": messages,
-                    "stream": True,
-                    "temperature": request.get("temperature", 0.7),
-                    "max_tokens": request.get("max_tokens", 2000)
-                }
+                # Log the request (but not the API key)
+                print(f"Making OpenRouter request with {len(messages)} messages")
                 
                 async with httpx.AsyncClient() as client:
-                    async with client.stream(
-                        "POST",
+                    response = await client.post(
                         "https://openrouter.ai/api/v1/chat/completions",
-                        json=payload,
-                        headers=headers,
-                        timeout=60.0
-                    ) as response:
-                        if response.status_code != 200:
-                            error_detail = await response.aread()
-                            raise HTTPException(
-                                status_code=response.status_code,
-                                detail=f"OpenRouter API error: {error_detail.decode()}"
-                            )
-                        
-                        return StreamingResponse(
-                            stream_openrouter_response(response),
-                            media_type="text/event-stream"
+                        json={
+                            "model": "deepseek/deepseek-v3-base:free",
+                            "messages": messages
+                        },
+                        headers=headers
+                    )
+                    
+                    if response.status_code != 200:
+                        error_content = response.json()
+                        return JSONResponse(
+                            status_code=500,
+                            content={"error": f"OpenRouter API error: {error_content}"}
                         )
                         
+                    # If we get here, the request was successful
+                    return StreamingResponse(
+                        stream_openrouter_response(response),
+                        media_type="text/event-stream"
+                    )
+                    
             except Exception as e:
-                raise HTTPException(
+                return JSONResponse(
                     status_code=500,
-                    detail=f"OpenRouter API error: {str(e)}"
+                    content={"error": f"Error calling OpenRouter: {str(e)}"}
                 )
-                
     except Exception as e:
-        raise HTTPException(
+        return JSONResponse(
             status_code=500,
-            detail=str(e)
+            content={"error": f"Server error: {str(e)}"}
         )
 
 # Health check endpoint
