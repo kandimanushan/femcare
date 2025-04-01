@@ -152,7 +152,16 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
     e.preventDefault();
     if (!userInput.trim()) return;
 
+    const userMessage = {
+        role: 'user',
+        content: userInput.trim()
+    };
+
     try {
+        // Add loading state
+        setIsLoading(true);
+        setError(null);
+
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
@@ -163,20 +172,34 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
                     role: 'user',
                     content: userInput.trim()
                 }],
-                model_type: 'openrouter'
+                model_type: 'openrouter',
+                temperature: 0.7,
+                max_tokens: 2000
             }),
         });
 
         if (!response.ok) {
             const errorData = await response.text();
-            console.error('Server error:', errorData);
-            throw new Error(errorData || 'Failed to get response');
+            console.error('Server response:', errorData);
+            throw new Error(errorData || 'Failed to get response from AI');
         }
 
-        // Handle successful response...
+        // Handle streaming response
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('No response body');
+
+        // Process the stream
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            // Process the chunk...
+        }
+
     } catch (error) {
         console.error('Chat error:', error);
-        // Show error to user
+        setError(error instanceof Error ? error.message : 'An unknown error occurred');
+    } finally {
+        setIsLoading(false);
     }
   };
 
@@ -226,6 +249,12 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
           <strong className="font-bold">Error:</strong>
           <span className="block sm:inline"> {error}</span>
+          <button 
+            className="absolute top-0 right-0 px-4 py-3"
+            onClick={() => setError(null)}
+          >
+            ×
+          </button>
         </div>
       )}
 

@@ -126,9 +126,6 @@ async def chat_with_llm(request: Dict):
         messages = request.get("messages", [])
         model_type = request.get("model_type", "ollama")
         
-        # Log the incoming request
-        print(f"Received request: model_type={model_type}")
-        
         if model_type == "openrouter":
             if not OPENROUTER_API_KEY:
                 raise HTTPException(
@@ -136,29 +133,48 @@ async def chat_with_llm(request: Dict):
                     detail="OpenRouter API key not configured"
                 )
             
-            # Log the API key presence (don't log the actual key)
-            print(f"OpenRouter API key present: {bool(OPENROUTER_API_KEY)}")
-            
             try:
-                return StreamingResponse(
-                    stream_openrouter_response(
-                        messages,
-                        system_prompt=request.get("systemPrompt"),
-                        temperature=request.get("temperature", 0.7),
-                        max_tokens=request.get("max_tokens", 2000)
-                    ),
-                    media_type="text/event-stream"
-                )
+                headers = {
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "HTTP-Referer": "http://localhost:3000",
+                    "Content-Type": "application/json"
+                }
+                
+                payload = {
+                    "model": "deepseek-ai/deepseek-coder-33b-instruct",
+                    "messages": messages,
+                    "stream": True,
+                    "temperature": request.get("temperature", 0.7),
+                    "max_tokens": request.get("max_tokens", 2000)
+                }
+                
+                async with httpx.AsyncClient() as client:
+                    async with client.stream(
+                        "POST",
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        json=payload,
+                        headers=headers,
+                        timeout=60.0
+                    ) as response:
+                        if response.status_code != 200:
+                            error_detail = await response.aread()
+                            raise HTTPException(
+                                status_code=response.status_code,
+                                detail=f"OpenRouter API error: {error_detail.decode()}"
+                            )
+                        
+                        return StreamingResponse(
+                            stream_openrouter_response(response),
+                            media_type="text/event-stream"
+                        )
+                        
             except Exception as e:
-                # Log specific OpenRouter errors
-                print(f"OpenRouter API error: {str(e)}")
                 raise HTTPException(
                     status_code=500,
                     detail=f"OpenRouter API error: {str(e)}"
                 )
+                
     except Exception as e:
-        # Log any other errors
-        print(f"General error: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=str(e)
