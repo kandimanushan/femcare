@@ -150,8 +150,15 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setIsLoading(true);
+    if (!input.trim()) return;
+
+    // Create the user message object first
+    const userMessage = {
+      id: Date.now().toString(),
+      role: 'user' as const,
+      content: input,
+      timestamp: new Date()
+    };
 
     try {
       console.log(`Sending request with model: ${selectedModel}`);
@@ -172,12 +179,11 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`API error: ${errorData.detail || response.statusText}`);
-      }
+      // Add the user message to the messages array
+      setMessages(prev => [...prev, userMessage]);
+      setInput(''); // Clear the input
 
-      // Handle streaming response...
+      // Handle the response...
     } catch (error) {
       console.error('Chat error:', error);
       setError(error instanceof Error ? error.message : 'An unknown error occurred');

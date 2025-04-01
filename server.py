@@ -30,7 +30,7 @@ OLLAMA_MODEL = "llama3.2"
 
 # OpenRouter API configuration
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODEL = "deepseek-ai/deepseek-coder-33b-instruct"
+OPENROUTER_MODEL = "deepseek/deepseek-v3-base:free"
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 
 if not OPENROUTER_API_KEY:
