@@ -78,7 +78,7 @@ async def stream_openrouter_response(messages, system_prompt=None, temperature=0
     try:
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "HTTP-Referer": "http://localhost:3000",  # Update with your domain
+            "HTTP-Referer": "https://femcare-three.vercel.app",  # Updated with actual Vercel domain
             "Content-Type": "application/json"
         }
         logger.debug("Making OpenRouter API request")

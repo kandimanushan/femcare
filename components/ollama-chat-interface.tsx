@@ -42,7 +42,7 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
   
   // Chat state
   const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState("")
+  const [userInput, setUserInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking')
@@ -150,18 +150,20 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!userInput.trim()) return;
 
-    // Create the user message object first
+    // Create the user message object BEFORE using it
     const userMessage = {
       id: Date.now().toString(),
       role: 'user' as const,
-      content: input,
+      content: userInput,
       timestamp: new Date()
     };
 
     try {
-      console.log(`Sending request with model: ${selectedModel}`);
+      // Add message to state immediately
+      setMessages(prev => [...prev, userMessage]);
+      
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -172,18 +174,19 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
             role: m.role,
             content: m.content
           })),
-          model_type: selectedModel,
-          systemPrompt: systemPrompt,
-          temperature: temperature,
-          max_tokens: maxTokens
+          model_type: selectedModel
         }),
       });
 
-      // Add the user message to the messages array
-      setMessages(prev => [...prev, userMessage]);
-      setInput(''); // Clear the input
+      // Clear input after sending
+      setUserInput('');
 
-      // Handle the response...
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Handle streaming response...
+      
     } catch (error) {
       console.error('Chat error:', error);
       setError(error instanceof Error ? error.message : 'An unknown error occurred');
@@ -381,8 +384,8 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
       <form onSubmit={handleSubmit} className="p-4 border-t">
         <div className="flex items-end gap-2">
           <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
             placeholder={translations.dashboard[currentLanguage].typeHealthQuestion}
             className="min-h-[60px] flex-1 resize-none"
             onKeyDown={(e) => {
@@ -392,7 +395,7 @@ export default function OllamaChatInterface({ currentLanguage }: OllamaChatInter
               }
             }}
           />
-          <Button type="submit" size="icon" disabled={isLoading || !input.trim()}>
+          <Button type="submit" size="icon" disabled={isLoading || !userInput.trim()}>
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>
